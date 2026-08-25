@@ -1,0 +1,333 @@
+# Cuts a release of the vpnhoodsignin module: works out the next version, writes it into
+# the module, commits and tags that, builds the zip, and publishes it as a GitHub release.
+#
+# Triggered by hand (Actions -> Release -> Run workflow). Nothing is released on push — a
+# release is always a deliberate act.
+#
+# WHMCS compares the version in vpnhoodsignin_config() against tbladdonmodules to decide
+# whether to run the module's upgrade path, so a shipped version is immutable: the same
+# number must always mean the same code.
+name: Release
+
+run-name: >-
+  ${{ inputs.republish && 'Republish' || 'Release' }}
+  ${{ inputs.version != '' && inputs.version || (inputs.republish && 'the current version' || format('({0} bump)', inputs.bump)) }}
+  ${{ inputs.draft && '[draft]' || '' }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Which part of ./VERSION to increment before releasing. 'none' releases it as committed. minor/major are your call — nothing can infer them from the diff."
+        required: true
+        default: patch
+        type: choice
+        options: [patch, minor, major, none]
+      version:
+        description: "Exact version to release (MAJOR.MINOR.PATCH[-prerelease]). Overrides 'bump'. Leave empty unless you need a specific number."
+        required: false
+        type: string
+      republish:
+        description: "Rebuild and replace an already-published release, keeping its version. Ignores 'bump'. Only allowed when nothing that ships changed since the tag."
+        required: false
+        type: boolean
+        default: false
+      draft:
+        description: "Publish as a draft — created but invisible until you press Publish."
+        required: false
+        type: boolean
+        default: false
+      prerelease:
+        description: "Mark the release as a pre-release (not offered as 'latest')."
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  MODULE: vpnhoodsignin
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Refuse to release from anything but a branch
+        run: |
+          set -euo pipefail
+          if [ "${{ github.ref_type }}" != "branch" ]; then
+            echo "::error::the version bump has to be committed somewhere — run this from a branch, not ${{ github.ref_type }} ${{ github.ref_name }}"
+            exit 1
+          fi
+
+      - name: Configure the committer identity
+        run: |
+          set -euo pipefail
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+      - name: Run the unit tests
+        run: |
+          set -euo pipefail
+          php -v | head -n1
+          php tests/unit/run.php
+
+      - name: Work out the next version
+        id: v
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          BUMP: ${{ inputs.bump }}
+          REPUBLISH: ${{ inputs.republish }}
+          # SemVer with an optional pre-release tail. No build metadata: PHP cannot
+          # order it with version_compare(), and that is what WHMCS uses.
+          SEMVER: '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'
+        run: |
+          set -euo pipefail
+
+          bash scripts/set-version.sh --check
+
+          DECLARED="$(tr -d ' \t\r\n' < VERSION)"
+
+          git fetch --tags --force --quiet origin
+          LATEST="$(git tag --list 'v*' --sort=-v:refname | head -n1)"
+
+          if [ -n "$INPUT_VERSION" ]; then
+            NEXT="$INPUT_VERSION"; BASIS="explicit input"
+          elif [ "$REPUBLISH" = "true" ]; then
+            NEXT="$DECLARED"; BASIS="./VERSION — republishing"
+          elif [ -z "$LATEST" ]; then
+            NEXT="$DECLARED"; BASIS="./VERSION — first release, nothing to bump from"
+          elif [ "$BUMP" = "none" ]; then
+            NEXT="$DECLARED"; BASIS="./VERSION as committed"
+          else
+            CORE="${DECLARED%%-*}"
+            IFS='.' read -r MAJOR MINOR PATCH <<EOF
+          $CORE
+          EOF
+            case "$BUMP" in
+              major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+              minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+              patch) if [ "$DECLARED" = "$CORE" ]; then PATCH=$((PATCH + 1)); fi ;;
+              *) echo "::error::unknown bump '$BUMP'"; exit 1 ;;
+            esac
+            NEXT="$MAJOR.$MINOR.$PATCH"; BASIS="$BUMP bump of $DECLARED"
+          fi
+
+          if ! printf '%s' "$NEXT" | grep -qE "$SEMVER"; then
+            echo "::error::'$NEXT' is not MAJOR.MINOR.PATCH[-prerelease]"
+            exit 1
+          fi
+
+          TAG_EXISTS=false
+          if git rev-parse -q --verify "refs/tags/v$NEXT" >/dev/null; then
+            if [ "$REPUBLISH" != "true" ]; then
+              echo "::error::v$NEXT is already released — bump instead of overwriting it"
+              exit 1
+            fi
+            TAGGED="$(git rev-parse "refs/tags/v$NEXT^{commit}")"
+            HEAD_SHA="$(git rev-parse HEAD)"
+            if ! git diff --quiet "$TAGGED" "$HEAD_SHA" -- modules VERSION; then
+              echo "::error::modules/ or VERSION changed since v$NEXT was tagged — republishing would put different code under the same version, and WHMCS would never run the upgrade path. Bump instead."
+              git diff --stat "$TAGGED" "$HEAD_SHA" -- modules VERSION
+              exit 1
+            fi
+            TAG_EXISTS=true
+          fi
+
+          echo "Last tagged: ${LATEST:-none}"
+          echo "Releasing:   $NEXT  ($BASIS)"
+
+          bash scripts/set-version.sh "$NEXT"
+
+          PRE=${{ inputs.prerelease }}
+          case "$NEXT" in *-*) PRE=true ;; esac
+
+          {
+            echo "version=$NEXT"
+            echo "tag=v$NEXT"
+            echo "asset=$MODULE.zip"
+            echo "previous=$LATEST"
+            echo "prerelease=$PRE"
+            echo "tag_exists=$TAG_EXISTS"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Lint the PHP that ships in the zip
+        run: |
+          set -euo pipefail
+          find modules -name '*.php' -print0 | xargs -0 -r -n1 php -l
+
+      - name: Commit the version bump
+        env:
+          TAG: ${{ steps.v.outputs.tag }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "The module already declared ${{ steps.v.outputs.version }} — nothing to commit."
+            exit 0
+          fi
+
+          git add VERSION modules
+          git commit -m "Release $TAG"
+
+          for attempt in 1 2 3; do
+            if git push origin "HEAD:$BRANCH"; then exit 0; fi
+            if [ "$attempt" = "3" ]; then
+              echo "::error::could not push the version bump to $BRANCH"
+              exit 1
+            fi
+            echo "Push rejected — rebasing onto origin/$BRANCH and retrying."
+            git fetch --quiet origin "$BRANCH"
+            git rebase "origin/$BRANCH"
+          done
+
+      - name: Tag the release commit
+        if: steps.v.outputs.tag_exists != 'true'
+        env:
+          TAG: ${{ steps.v.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git tag -a "$TAG" -m "VpnHood! Sign-In $TAG"
+          git push origin "refs/tags/$TAG"
+
+      - name: Build the zip
+        env:
+          ASSET: ${{ steps.v.outputs.asset }}
+        run: |
+          set -euo pipefail
+          STAGE="$RUNNER_TEMP/pkg"
+          rm -rf "$STAGE" && mkdir -p "$STAGE"
+
+          # The zip extracts at the WHMCS root and contains modules/ only — this
+          # module adds nothing to includes/hooks, because its hook lives inside the
+          # addon (which is what makes deactivation a real kill switch).
+          cp -R modules "$STAGE/modules"
+          cp LICENSE "$STAGE/modules/addons/$MODULE/LICENSE"
+
+          find "$STAGE" \( -name '*.bak' -o -name '.DS_Store' -o -name 'Thumbs.db' -o -name '._*' \) -delete
+
+          # Deterministic archive: date everything from the last commit that touched
+          # what ships, sort the input, strip uid/gid — same payload in, same bytes out.
+          SOURCE_DATE="$(git log -1 --format=%cI -- modules VERSION)"
+          [ -n "$SOURCE_DATE" ] || { echo "::error::could not date the payload"; exit 1; }
+          find "$STAGE" -exec touch -d "$SOURCE_DATE" {} +
+
+          ( cd "$STAGE" && find modules | LC_ALL=C sort | zip -q -X "$GITHUB_WORKSPACE/$ASSET" -@ )
+
+          sha256sum "$ASSET" > "$ASSET.sha256"
+          ls -lh "$ASSET"
+
+      - name: Verify the zip
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+          ASSET: ${{ steps.v.outputs.asset }}
+        run: |
+          set -euo pipefail
+          unzip -Z1 "$ASSET"
+
+          for f in \
+            modules/addons/vpnhoodsignin/vpnhoodsignin.php \
+            modules/addons/vpnhoodsignin/hooks.php \
+            modules/addons/vpnhoodsignin/api.php \
+            modules/addons/vpnhoodsignin/lib/GoogleToken.php \
+            modules/addons/vpnhoodsignin/lib/Jwt.php \
+            modules/addons/vpnhoodsignin/lib/Http.php \
+            modules/addons/vpnhoodsignin/lib/SignInGate.php \
+            modules/addons/vpnhoodsignin/lib/AccountLinker.php \
+            modules/addons/vpnhoodsignin/templates/how-did-you-hear.tpl
+          do
+            unzip -Z1 "$ASSET" | grep -Fxq "$f" || { echo "::error::$f missing from $ASSET"; exit 1; }
+          done
+
+          # Nothing outside modules/ — the zip lands in the WHMCS root.
+          if unzip -Z1 "$ASSET" | grep -vE '^modules(/|$)' | grep -q .; then
+            echo "::error::$ASSET contains paths outside modules/"
+            unzip -Z1 "$ASSET" | grep -vE '^modules(/|$)'
+            exit 1
+          fi
+
+          # The addon must declare the version being tagged — it IS the upgrade trigger.
+          unzip -p "$ASSET" modules/addons/vpnhoodsignin/vpnhoodsignin.php \
+            | grep -q "'version'[[:space:]]*=>[[:space:]]*'$VERSION'" \
+            || { echo "::error::vpnhoodsignin.php in the zip is not at $VERSION"; exit 1; }
+
+          sha256sum -c "$ASSET.sha256"
+          echo "$ASSET verified."
+
+      - name: Write the release notes
+        id: notes
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+          ASSET: ${{ steps.v.outputs.asset }}
+        run: |
+          set -euo pipefail
+          SHA="$(cut -d' ' -f1 < "$ASSET.sha256")"
+          NOTES="$RUNNER_TEMP/notes.md"
+
+          {
+            echo "**VpnHood! Sign-In $VERSION** — the WHMCS addon (\`vpnhoodsignin\`) that lets"
+            echo "\"Sign in with Google\" register new clients and sign in existing ones."
+            echo
+            echo "Extract at the WHMCS root, then activate it from *Configuration -> Addon Modules*."
+            echo
+            echo '```'
+            echo "sha256  $SHA"
+            echo '```'
+          } > "$NOTES"
+
+          echo "path=$NOTES" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.v.outputs.tag }}
+          ASSET: ${{ steps.v.outputs.asset }}
+          NOTES: ${{ steps.notes.outputs.path }}
+          DRAFT: ${{ inputs.draft }}
+          PRERELEASE: ${{ steps.v.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Deleting the existing $TAG release to replace it."
+            gh release delete "$TAG" --yes
+          fi
+
+          args=( "$TAG" "$ASSET" "$ASSET.sha256" --title "$TAG" --notes-file "$NOTES" --verify-tag )
+          if [ "$DRAFT" = "true" ]; then args+=(--draft); fi
+          if [ "$PRERELEASE" = "true" ]; then args+=(--prerelease); fi
+          if [ "$DRAFT" != "true" ] && [ "$PRERELEASE" != "true" ]; then args+=(--latest); fi
+          gh release create "${args[@]}"
+
+      - name: Summarise
+        env:
+          TAG: ${{ steps.v.outputs.tag }}
+          ASSET: ${{ steps.v.outputs.asset }}
+          SHA: ${{ steps.notes.outputs.sha }}
+          PREVIOUS: ${{ steps.v.outputs.previous }}
+          REPO: ${{ github.repository }}
+        run: |
+          {
+            echo "## ${{ inputs.republish && 'Republished' || 'Released' }} $TAG"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Previous release | ${PREVIOUS:-none} |"
+            echo "| Asset | \`$ASSET\` |"
+            echo "| sha256 | \`$SHA\` |"
+            echo
+            echo "https://github.com/$REPO/releases/tag/$TAG"
+          } >> "$GITHUB_STEP_SUMMARY"
