@@ -1,0 +1,9 @@
+/.idea/
+
+# Local env / credentials — never commit
+.env
+*.env
+!*.env.example
+
+# macOS Finder junk
+.DS_Store

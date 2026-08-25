@@ -1,0 +1,4 @@
+# Shell scripts and PHP ship to Linux/WHMCS hosts — keep LF endings.
+*.sh text eol=lf
+*.php text eol=lf
+VERSION text eol=lf
