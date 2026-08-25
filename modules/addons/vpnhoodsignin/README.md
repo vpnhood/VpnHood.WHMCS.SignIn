@@ -58,6 +58,9 @@ believed once every check above passes.
    > loads. Adding the module to `ActiveAddonModules` alone makes every WHMCS API report
    > the addon as active while its hooks are still never loaded — the button simply never
    > appears, and nothing anywhere says why.
+
+   ![The addon's row in Configuration → Addon Modules, with its Activate, Deactivate and Configure buttons](../../../docs/images/01-addon-modules-row.png)
+
 3. Set up a Google OAuth Client ID (below) and paste it into the settings.
 4. Set **Enable Google Sign-In** to *Yes*.
 5. **Turn OFF the built-in integration** at *Configuration → System Settings → Sign-In
@@ -76,6 +79,12 @@ and never exchanges an authorisation code.
 
 ## Settings
 
+*Configuration → Addon Modules → VpnHood! Sign-In → Configure*. Two of these decide whether
+the button appears at all — **Enable Google Sign-In** and **Google Client ID**; every other
+field has a working default.
+
+![The addon's settings on the WHMCS Configure screen](../../../docs/images/02-configure-settings.png)
+
 | Setting | Meaning |
 |---|---|
 | **Enable Google Sign-In** | Master switch. Off leaves the addon installed but inert — no button, and the endpoint answers 404. |
@@ -90,6 +99,21 @@ and never exchanges an authorisation code.
 | **Default Value** | Used by *Use default value*. Must be one of the field's own dropdown options. |
 | **Country Override** | Two-letter ISO code for new clients. Blank uses Cloudflare's visitor country, then the WHMCS default country. |
 | **New-Client Cutoff** | Stamped at activation. Only clients created on or after it can be held by *Ask once after signup*. |
+
+## Is it working?
+
+*Addons → VpnHood! Sign-In* answers that in one screen: whether the button is on, which
+Client ID a token has to be minted for, whether WHMCS's built-in integration is still
+drawing a second button, where the button is being placed, and how many accounts can sign
+in with Google today. Every check on that page is one that otherwise shows up only as
+"the button does nothing".
+
+![The addon's admin page: status, custom-field state, and what to do when something goes wrong](../../../docs/images/03-admin-status-page.png)
+
+**Built-in Sign-In Integration: *could not be read*** is not a fault. WHMCS encrypts that
+setting with a scheme its own decrypt API does not reverse, and a value that comes back as
+anything other than a recognisable yes/no is reported as unknown rather than guessed at —
+read it off *System Settings → Sign-In Integrations* instead.
 
 ## The required custom field
 

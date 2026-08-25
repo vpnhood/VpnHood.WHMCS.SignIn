@@ -20,9 +20,11 @@ is deactivated.
 modules/addons/vpnhoodsignin/   the module (this is all that ships)
 scripts/set-version.sh          stamp VERSION into the module
 scripts/deploy-dev.sh           publish to the dev WHMCS (staged, verified, linted)
+scripts/capture-screenshots.ps1 recapture the admin screenshots from a real WHMCS
 tests/unit/                     pure-PHP tests; no WHMCS, no network
 tests/integration/              real-WHMCS tests, run over SSH on the dev box
 docs/ARCHITECTURE.md            developer guide
+docs/images/                    those screenshots, as the module README embeds them
 ```
 
 Production code lives **only** under `modules/`. Everything for development and testing
