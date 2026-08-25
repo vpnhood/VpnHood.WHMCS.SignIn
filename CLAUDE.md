@@ -50,6 +50,10 @@ Production code lives ONLY under `modules/`. Everything for development and test
 its own folder — never mix test/dev files into the production tree:
 
 - `VERSION` + `scripts/set-version.sh` — the repo version and the script that stamps it.
+- `scripts/capture-screenshots.ps1` (+ the `.js` it drives) — recaptures the WHMCS admin
+  screenshots the module README embeds, into `docs/images/`. Read only against the install
+  it captures, and it blanks the settings of every other module before each shot — the
+  Configure screen is one shared form holding all of them.
 - `scripts/deploy-dev.sh` — publishes the module to the dev WHMCS (staged upload + md5
   verify + server-side `php -l` + endpoint smoke check). It deploys only `modules/`, so test
   files can never reach the server.
