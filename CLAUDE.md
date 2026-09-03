@@ -76,11 +76,12 @@ target install. Dev box only.
 
 ## Dev server & credentials
 
-- Credentials live outside the repo at `<Vh root>/.user/whmcs/`: `ssh.openssh` (private
-  key), `ssh.ppk`, `ssh.pub`, `secrets-dev.json`.
-  > The sibling `VpnHood.WHMCS` repo's CLAUDE.md and `deploy-dev.sh` point at a
-  > `.user/account-dev.vpnhood.com/` directory that does not exist. Use `.user/whmcs/`.
-- Dev WHMCS: `ssh -i <Vh root>/.user/whmcs/ssh.openssh whmcsdev@webhost-ftps.vpnhood.com`,
+- Credentials live outside the repo: the SSH key at `<Vh root>/.user/ssh/ssh.openssh`
+  (`ssh.ppk`, `ssh.pub` beside it) — one key for both WHMCS accounts, `whmcsdev` and
+  `accountvpnhood`, since the key folder is named for the role and not for a host or a
+  person. Admin logins are at `<Vh root>/.user/account-dev.vpnhood.com/secrets.json`,
+  the same `.user/<host>/` convention the sibling `VpnHood.WHMCS` repo uses.
+- Dev WHMCS: `ssh -i <Vh root>/.user/ssh/ssh.openssh whmcsdev@webhost-ftps.vpnhood.com`,
   web root `/home/whmcsdev/web/whmcs-dev.vpnhood.com/public_html`, site
   `https://whmcs-dev.vpnhood.com`. Runs WHMCS **9.0.3**, theme `lagom2`.
 - The WHMCS core is ionCube-encoded — you cannot read its logic. Templates, language files

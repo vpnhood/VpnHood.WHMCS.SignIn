@@ -17,7 +17,7 @@
 # shared-hooks "two files declaring the same function fatals the site" hazard.
 #
 # Config (env vars, all optional):
-#   WHMCS_DEV_SSH_KEY   default <Vh root>/.user/whmcs/ssh.openssh
+#   WHMCS_DEV_SSH_KEY   default <Vh root>/.user/ssh/ssh.openssh
 #   WHMCS_DEV_SSH_HOST  default whmcsdev@webhost-ftps.vpnhood.com
 #   WHMCS_DEV_WEBROOT   default /home/whmcsdev/web/whmcs-dev.vpnhood.com/public_html
 #   WHMCS_DEV_URL       default https://whmcs-dev.vpnhood.com
@@ -28,7 +28,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 VH_ROOT="$(cd "$REPO_ROOT/.." && pwd)"
 
-SSH_KEY="${WHMCS_DEV_SSH_KEY:-$VH_ROOT/.user/whmcs/ssh.openssh}"
+SSH_KEY="${WHMCS_DEV_SSH_KEY:-$VH_ROOT/.user/ssh/ssh.openssh}"
 SSH_HOST="${WHMCS_DEV_SSH_HOST:-whmcsdev@webhost-ftps.vpnhood.com}"
 WEBROOT="${WHMCS_DEV_WEBROOT:-/home/whmcsdev/web/whmcs-dev.vpnhood.com/public_html}"
 SITE_URL="${WHMCS_DEV_URL:-https://whmcs-dev.vpnhood.com}"
@@ -49,6 +49,17 @@ deploy_dir() {
   tar -C "$REPO_ROOT/$rel" -cf - --exclude='._*' --exclude='.DS_Store' . \
     | "${SSH[@]}" "tar -C '$WEBROOT/$stage' -xf - \
         && rm -rf '$WEBROOT/$rel' && mv '$WEBROOT/$stage' '$WEBROOT/$rel'"
+}
+
+# Copy files under $REPO_ROOT/$rel into $WEBROOT/$rel WITHOUT deleting anything
+# already there. Used for modules/widgets, which holds WHMCS's own dashboard
+# widgets and the widgets of every other VpnHood package — replacing that
+# directory would delete them.
+overlay_dir() {
+  local rel="$1"
+  [ -d "$REPO_ROOT/$rel" ] || { echo "!! source missing: $REPO_ROOT/$rel" >&2; exit 1; }
+  echo "-> $rel (overlay)"
+  tar -C "$REPO_ROOT" -cf - --exclude='._*' --exclude='.DS_Store' "$rel"     | "${SSH[@]}" "tar -C '$WEBROOT' -xf -"
 }
 
 # Compare an md5 manifest of local vs deployed files. (`sed 's/ \*/  /'`
@@ -107,6 +118,9 @@ echo "Deploying vpnhoodsignin to $SSH_HOST:$WEBROOT"
 deploy_dir "$MODULE_REL"
 verify_dir "$MODULE_REL"
 lint_dir   "$MODULE_REL"
+# the shared VpnHood update-check widget ships with every package, same path
+overlay_dir "modules/widgets"
+lint_dir    "modules/widgets"
 smoke_check
 
 if [ "$FAIL" -ne 0 ]; then
