@@ -1,0 +1,8 @@
+{
+    "module": "vpnhoodsignin",
+    "kind": "addon",
+    "label": "VpnHood! Sign-In",
+    "repo": "vpnhood/VpnHood.WHMCS.SignIn",
+    "package": "vpnhoodsignin.zip",
+    "packageLabel": "VpnHood! Sign-In"
+}
