@@ -46,7 +46,7 @@ function vpnhoodsignin_config(): array
     return [
         'name'        => 'VpnHood! Sign-In',
         'description' => 'Lets "Sign in with Google" register new clients and sign in existing ones, instead of dead-ending at "Link Initiated". Replaces the built-in Sign-In Integration.',
-        'version'     => '1.1.3',
+        'version'     => '1.1.4',
         'author'      => 'VpnHood',
         'fields'      => [
             'Enabled' => [
