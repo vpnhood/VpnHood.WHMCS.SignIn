@@ -381,9 +381,18 @@ if (!class_exists('VpnHoodUpdateCheck')) {
                             . implode(', ', $parts) . '</div>';
                 }
 
-                $rows .= '<tr><td>' . self::escape($package['label'])
-                       . ($package['package'] !== '' ? ' <span class="text-muted">(' . self::escape($package['package']) . ')</span>' : '')
-                       . $detail . '</td>'
+                // The package NAME is the link to where its releases live — the one place an
+                // admin ever needs to go, and worth reaching whether or not an update is
+                // pending (release notes, older versions, the download itself). The zip's
+                // filename is NOT shown here: it says nothing an admin can act on and the
+                // release page carries exactly one zip. It survives where it is actually
+                // useful — the "re-extract THIS file" line on a half-deployed package.
+                $name = $package['repo'] !== ''
+                    ? '<a href="https://github.com/' . self::escape($package['repo']) . '/releases" target="_blank" rel="noopener">'
+                      . self::escape($package['label']) . '</a>'
+                    : self::escape($package['label']);
+
+                $rows .= '<tr><td>' . $name . $detail . '</td>'
                        . '<td>' . $installed . '</td><td>' . $state . '</td></tr>';
             }
 
