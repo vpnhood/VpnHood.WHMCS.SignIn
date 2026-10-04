@@ -67,7 +67,7 @@ if (-not (Test-Path $CredentialsPath)) {
 
 # Playwright lives in a throwaway folder, not in the repo: this is a maintenance tool
 # run occasionally, and the module itself has no JavaScript toolchain to attach it to.
-$toolDir = Join-Path ([System.IO.Path]::GetTempPath()) 'vpnhood-shot-tools'
+$toolDir = Join-Path ([System.IO.Path]::GetTempPath()) 'vh\vpnhood-shot-tools'
 if (-not (Test-Path (Join-Path $toolDir 'node_modules\playwright'))) {
     Write-Host '==> Installing Playwright (uses your existing Chrome, no browser download)' -ForegroundColor Cyan
     New-Item -ItemType Directory -Path $toolDir -Force | Out-Null
