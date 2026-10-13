@@ -44,12 +44,13 @@ PHP_MODULES=(
 FAIL=0
 
 # Rewrite  'version' => '...'  in the module's _config(). Exactly one such key
-# is expected; bailing out otherwise stops us silently editing the wrong line.
+# with a quoted value is expected; bailing out otherwise stops us silently editing the
+# wrong line.
 apply_php() {
   local rel="$1" path="$REPO_ROOT/$1" count current
   [ -f "$path" ] || { echo "!! missing $rel" >&2; FAIL=1; return; }
 
-  count="$(grep -cE "'version'[[:space:]]*=>" "$path" || true)"
+  count="$(grep -cE "'version'[[:space:]]*=>[[:space:]]*'" "$path" || true)"
   if [ "$count" != "1" ]; then
     echo "!! $rel: expected exactly one 'version' key, found $count" >&2
     FAIL=1

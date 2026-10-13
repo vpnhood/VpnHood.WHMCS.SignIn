@@ -209,6 +209,33 @@ function vpnhoodsignin_deactivate(): array
 }
 
 /**
+ * The upgrade WHMCS has not run yet. WHMCS records an addon's new version, and runs its _upgrade()
+ * where it has one, only when an admin opens Addon Modules, so an update made by extracting files
+ * went unrecorded until someone did; the cron hook (hooks.php) calls this, so an update is
+ * recorded within one cron run. WHMCS's own contract: _upgrade() gets the version that was
+ * installed, and runs only for a newer one. An inactive addon has no version row. The row is
+ * WHMCS's record of this module, not state of ours: nothing here duplicates it.
+ */
+function vpnhoodsignin_runPendingUpgrade(): void
+{
+    $installed = Capsule::table('tbladdonmodules')
+        ->where('module', 'vpnhoodsignin')->where('setting', 'version')->value('value');
+    $config = vpnhoodsignin_config();
+    if ($installed === null || (string) $installed === $config['version']) {
+        return;
+    }
+
+    $upgrade = 'vpnhoodsignin_upgrade';
+    if (function_exists($upgrade) && version_compare($config['version'], (string) $installed, '>')) {
+        $upgrade(['version' => (string) $installed]);
+    }
+    Capsule::table('tbladdonmodules')
+        ->where('module', 'vpnhoodsignin')->where('setting', 'version')
+        ->update(['value' => $config['version']]);
+    logActivity("{$config['name']} updated from $installed to {$config['version']}.");
+}
+
+/**
  * Admin page: whether this is actually working, and what would stop it.
  *
  * Every check here is one that silently produces "the button does nothing",

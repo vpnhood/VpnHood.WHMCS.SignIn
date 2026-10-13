@@ -270,3 +270,10 @@ into the `'version'` key of `vpnhoodsignin_config()`, and `--check` verifies agr
 **Bump the version for any change to the module's files** — templates, hooks, even a
 comment. WHMCS keys its install/upgrade path on the stamped version, so an edit that ships
 under an unchanged number is an edit that silently does not reach the install.
+
+**An update takes effect without an admin.** WHMCS records a new version only when an admin
+opens Addon Modules, so `hooks.php` catches up on the cron (`AfterCronJob` →
+`vpnhoodsignin_runPendingUpgrade()`) and records the files' version within one cron run, with an
+activity-log line. The module has no `_upgrade()`; one added would run there too, for a newer
+version only, as WHMCS runs it. It needs the module in `AddonModulesHooks` (behaviour 1 above);
+`tests/integration/pending-upgrade.test.sh` checks both.
