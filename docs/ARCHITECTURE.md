@@ -191,7 +191,8 @@ parameter, which puts you back to the account-language default.
 
 WHMCS loads `modules/addons/<name>/hooks.php` only for addons named in the **cached**
 `tblconfiguration.AddonModulesHooks` list, which it writes when an admin activates the
-module *through the admin UI*.
+module *through the admin UI*, and rebuilds for every active addon when an admin presses Save
+Changes on any addon's Configure form in Addon Modules.
 
 Adding the module to `ActiveAddonModules` alone is **not enough**, and the failure is
 invisible: `Addon::getActiveModules()`, `isActive()` and `isModuleEnabled()` all report the
